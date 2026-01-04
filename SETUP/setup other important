@@ -1,0 +1,4 @@
+mkdir -p /home/azure/.kube
+cp /etc/kubernetes/admin.conf /home/azure/.kube/config
+chown -R azure:azure /home/azure/.kube
+chmod 600 /home/azure/.kube/config
