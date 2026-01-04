@@ -1,0 +1,32 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Read Secret from Azure Key Vault') {
+            steps {
+                withAzureKeyvault(
+                    azureKeyVaultSecrets: [[
+                        secretType: 'Secret',
+                        name: 'demosecret',
+                        envVariable: 'KV_SECRET'
+                    ]]
+                ) {
+                    sh '''
+                      echo "Creating file on worker node"
+                      echo "Secret value is: $KV_SECRET" > testcomplete
+                    '''
+                }
+            }
+        }
+
+        stage('Print File Content (Teaching Demo)') {
+            steps {
+                sh '''
+                  echo "===== File Content ====="
+                  cat testcomplete
+                '''
+            }
+        }
+    }
+}
