@@ -1,0 +1,105 @@
+pipeline {
+    agent any
+
+    parameters {
+        password(
+            name: 'ARM_CLIENT_SECRET',
+            description: 'Azure Service Principal Client Secret'
+        )
+
+        choice(
+            name: 'ACTION',
+            choices: ['plan', 'apply'],
+            description: 'Terraform action'
+        )
+
+        choice(
+            name: 'STATE_CONTAINER',
+            choices: ['dev', 'prod', 'qualityassurance'],
+            description: 'Backend state container'
+        )
+
+        string(name: 'WORKSPACE', description: 'Terraform workspace name')
+
+        string(name: 'RG_NAME', description: 'Resource Group name')
+        string(name: 'LOCATION', description: 'Azure region (example: centralus)')
+        string(name: 'VNET_NAME', description: 'Virtual Network name')
+        string(name: 'VNET_CIDR', description: 'VNet CIDR (10.0.0.0/16)')
+        string(name: 'SUBNET_NAME', description: 'Subnet name')
+        string(name: 'SUBNET_CIDR', description: 'Subnet CIDR (10.0.1.0/24)')
+    }
+
+    environment {
+        ARM_CLIENT_SECRET = "${params.ARM_CLIENT_SECRET}"
+        ARM_USE_AZURECLI_AUTH = "false"
+        ARM_AUTH_TYPE = "service_principal"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git url: "${myrepo}", branch: 'main'
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                sh '''
+                terraform init \
+                  -backend-config="storage_account_name=blaze123ungabunga" \
+                  -backend-config="container_name=${STATE_CONTAINER}" \
+                  -backend-config="key=${WORKSPACE}.tfstate" \
+                  -backend-config="use_azuread_auth=true" \
+                  -backend-config="resource_group_name=myprimary"
+                '''
+            }
+        }
+
+        stage('Workspace') {
+            steps {
+                sh '''
+                terraform workspace select ${WORKSPACE} \
+                || terraform workspace new ${WORKSPACE}
+                '''
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                sh '''
+                terraform plan \
+                  -var="rg_name=${RG_NAME}" \
+                  -var="location=${LOCATION}" \
+                  -var="vnet_name=${VNET_NAME}" \
+                  -var="vnet_cidr=${VNET_CIDR}" \
+                  -var="subnet_name=${SUBNET_NAME}" \
+                  -var="subnet_cidr=${SUBNET_CIDR}"
+                '''
+            }
+        }
+
+        stage('Terraform Apply') {
+            when {
+                expression { params.ACTION == 'apply' }
+            }
+            steps {
+                sh '''
+                terraform apply -auto-approve \
+                  -var="rg_name=${RG_NAME}" \
+                  -var="location=${LOCATION}" \
+                  -var="vnet_name=${VNET_NAME}" \
+                  -var="vnet_cidr=${VNET_CIDR}" \
+                  -var="subnet_name=${SUBNET_NAME}" \
+                  -var="subnet_cidr=${SUBNET_CIDR}"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Terraform ${params.ACTION} completed successfully"
+        }
+    }
+}
