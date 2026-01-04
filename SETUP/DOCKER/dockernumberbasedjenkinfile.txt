@@ -1,0 +1,54 @@
+pipeline {
+    agent { label 'ss' }
+
+    environment {
+        IMAGE_NAME = "pipeline-nginx"
+        CONTAINER_NAME = "pipeline-nginx"
+        PORT = "30080"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git url: "${myrepo}", branch: 'main'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                  docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                '''
+            }
+        }
+
+        stage('Run Container') {
+            steps {
+                sh '''
+                  # Stop and remove existing container (container only, not image)
+                  if docker ps -a --format '{{.Names}}' | grep -w ${CONTAINER_NAME}; then
+                    docker rm -f ${CONTAINER_NAME}
+                  fi
+
+                  # Run new container with latest build image
+                  docker run -d \
+                    -p ${PORT}:80 \
+                    --name ${CONTAINER_NAME} \
+                    ${IMAGE_NAME}:${IMAGE_TAG}
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Build #${BUILD_NUMBER} running on port ${PORT}"
+            echo "📦 Image created: ${IMAGE_NAME}:${IMAGE_TAG}"
+        }
+        failure {
+            echo "❌ Pipeline failed"
+        }
+    }
+}
