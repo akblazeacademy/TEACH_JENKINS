@@ -1,0 +1,37 @@
+pipeline {
+    agent { label 'ss' }
+
+    environment {
+        DIR_NAME = "demo_directory"
+    }
+
+    stages {
+
+        stage('Create Directory') {
+            steps {
+                sh '''
+                  echo "Creating directory: $DIR_NAME"
+                  mkdir -p $DIR_NAME
+                '''
+            }
+        }
+
+        stage('Verify Directory') {
+            steps {
+                sh '''
+                  echo "Verifying directory creation"
+                  ls -ld $DIR_NAME
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Directory created successfully on agent 'ss'"
+        }
+        failure {
+            echo "❌ Failed to create directory"
+        }
+    }
+}
