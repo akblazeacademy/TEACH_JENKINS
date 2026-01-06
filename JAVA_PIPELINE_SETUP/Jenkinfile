@@ -1,1 +1,65 @@
 
+pipeline {
+    agent { label 'ss' }
+
+    environment {
+        REPO_URL = "https://github.com/<YOUR_GITHUB_USERNAME>/TEACH_JENKINS.git"
+        CREDS    = "github-creds"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    credentialsId: env.CREDS,
+                    url: env.REPO_URL
+            }
+        }
+
+        stage('Build Java JAR') {
+            steps {
+                dir('JAVA_PIPELINE_SETUP') {
+                    sh 'mvn clean package'
+                }
+            }
+        }
+
+        stage('Verify JAR') {
+            steps {
+                dir('JAVA_PIPELINE_SETUP') {
+                    sh 'ls -l target'
+                    sh 'java -jar target/jenkins-demo-1.0.jar'
+                }
+            }
+        }
+
+        stage('Push JAR to GitHub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: env.CREDS,
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_TOKEN'
+                )]) {
+                    dir('JAVA_PIPELINE_SETUP') {
+                        sh '''
+                          git config user.email "jenkins@ci.com"
+                          git config user.name "jenkins-bot"
+
+                          git add target/*.jar
+                          git commit -m "Added build JAR from Jenkins pipeline" || true
+
+                          git push https://${GIT_USER}:${GIT_TOKEN}@github.com/<YOUR_GITHUB_USERNAME>/TEACH_JENKINS.git
+                        '''
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Java Pipeline Completed Successfully"
+        }
+    }
+}
