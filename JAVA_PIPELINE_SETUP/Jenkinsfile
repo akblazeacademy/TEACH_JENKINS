@@ -4,6 +4,7 @@ pipeline {
     environment {
         REPO_URL = "https://github.com/akblazeacademy/TEACH_JENKINS.git"
         CREDS    = "github-creds"
+        BUILD_JAR = "jenkins-demo-1.0-build-${BUILD_NUMBER}.jar"
     }
 
     stages {
@@ -24,11 +25,23 @@ pipeline {
             }
         }
 
+        stage('Rename JAR with Build Number') {
+            steps {
+                dir('JAVA_PIPELINE_SETUP') {
+                    sh '''
+                      mv target/jenkins-demo-1.0.jar target/${BUILD_JAR}
+                    '''
+                }
+            }
+        }
+
         stage('Verify JAR') {
             steps {
                 dir('JAVA_PIPELINE_SETUP') {
-                    sh 'ls -l target'
-                    sh 'java -jar target/jenkins-demo-1.0.jar'
+                    sh '''
+                      ls -l target
+                      java -jar target/${BUILD_JAR}
+                    '''
                 }
             }
         }
@@ -45,8 +58,8 @@ pipeline {
                           git config user.email "jenkins@ci.com"
                           git config user.name "jenkins-bot"
 
-                          git add target/*.jar
-                          git commit -m "Added build JAR from Jenkins pipeline" || true
+                          git add target/${BUILD_JAR}
+                          git commit -m "Build ${BUILD_NUMBER}: Added JAR" || true
 
                           git push https://${GIT_USER}:${GIT_TOKEN}@github.com/akblazeacademy/TEACH_JENKINS.git
                         '''
@@ -58,7 +71,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Java Pipeline Completed Successfully"
+            echo "✅ Build #${BUILD_NUMBER} completed successfully"
         }
     }
 }
