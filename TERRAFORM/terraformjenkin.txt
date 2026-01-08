@@ -2,9 +2,25 @@ pipeline {
     agent { label 'ss' }
 
     parameters {
+
+        string(
+            name: 'ARM_CLIENT_ID',
+            description: 'Azure Service Principal Client ID (App ID)'
+        )
+
         password(
             name: 'ARM_CLIENT_SECRET',
             description: 'Azure Service Principal Client Secret'
+        )
+
+        string(
+            name: 'ARM_TENANT_ID',
+            description: 'Azure Tenant ID'
+        )
+
+        string(
+            name: 'ARM_SUBSCRIPTION_ID',
+            description: 'Azure Subscription ID'
         )
 
         choice(
@@ -16,26 +32,43 @@ pipeline {
         choice(
             name: 'STATE_CONTAINER',
             choices: ['dev', 'prod', 'qualityassurance'],
-            description: 'Backend state container'
+            description: 'Terraform backend state container'
         )
 
         string(name: 'WORKSPACE', description: 'Terraform workspace name')
-
         string(name: 'RG_NAME', description: 'Resource Group name')
-        string(name: 'LOCATION', description: 'Azure region (example: centralus)')
+        string(name: 'LOCATION', description: 'Azure region')
         string(name: 'VNET_NAME', description: 'Virtual Network name')
-        string(name: 'VNET_CIDR', description: 'VNet CIDR (10.0.0.0/16)')
+        string(name: 'VNET_CIDR', description: 'VNet CIDR')
         string(name: 'SUBNET_NAME', description: 'Subnet name')
-        string(name: 'SUBNET_CIDR', description: 'Subnet CIDR (10.0.1.0/24)')
+        string(name: 'SUBNET_CIDR', description: 'Subnet CIDR')
     }
 
     environment {
-        ARM_CLIENT_SECRET = "${params.ARM_CLIENT_SECRET}"
+        ARM_CLIENT_ID         = "${params.ARM_CLIENT_ID}"
+        ARM_CLIENT_SECRET     = "${params.ARM_CLIENT_SECRET}"
+        ARM_TENANT_ID         = "${params.ARM_TENANT_ID}"
+        ARM_SUBSCRIPTION_ID   = "${params.ARM_SUBSCRIPTION_ID}"
+
+        // Force Service Principal auth (NO Azure CLI)
         ARM_USE_AZURECLI_AUTH = "false"
-        ARM_AUTH_TYPE = "service_principal"
     }
 
     stages {
+
+        stage('Validate Inputs') {
+            steps {
+                sh '''
+                if [ -z "$ARM_CLIENT_ID" ] || \
+                   [ -z "$ARM_CLIENT_SECRET" ] || \
+                   [ -z "$ARM_TENANT_ID" ] || \
+                   [ -z "$ARM_SUBSCRIPTION_ID" ]; then
+                   echo "❌ Missing Azure Service Principal credentials"
+                   exit 1
+                fi
+                '''
+            }
+        }
 
         stage('Checkout') {
             steps {
@@ -47,11 +80,12 @@ pipeline {
             steps {
                 sh '''
                 cd TERRAFORM
+
                 terraform init \
-                  -backend-config="storage_account_name=blaze123ungabunga" \
+                  -reconfigure \
+                  -backend-config="storage_account_name=ungabungablaze123" \
                   -backend-config="container_name=${STATE_CONTAINER}" \
                   -backend-config="key=${WORKSPACE}.tfstate" \
-                  -backend-config="use_azuread_auth=true" \
                   -backend-config="resource_group_name=myprimary"
                 '''
             }
@@ -104,6 +138,9 @@ pipeline {
     post {
         success {
             echo "✅ Terraform ${params.ACTION} completed successfully"
+        }
+        failure {
+            echo "❌ Terraform failed"
         }
     }
 }
