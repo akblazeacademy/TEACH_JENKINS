@@ -1,58 +1,48 @@
 pipeline {
     agent { label 'ss' }
 
-    parameters {
-        string(name: 'myrepo', description: 'Git repository URL')
-    }
-
     environment {
-        APP_NAME   = "pipeline-nginx"
         IMAGE_NAME = "pipeline-nginx:${BUILD_NUMBER}"
+        APP_NAME   = "pipeline-nginx"
         PORT       = "30080"
-        K8S_NS     = "default"
     }
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
-                echo "Cloning repository..."
-                git branch: 'main', url: "${myrepo}"
+                echo "Source code already checked out by Jenkins (Pipeline from SCM)"
+                sh 'ls -l'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                dir('KUBERNETES') {
-                    sh '''
-                        echo "Building Docker image..."
-                        docker build -t ${IMAGE_NAME} .
-                    '''
-                }
+                sh '''
+                  echo "Building Docker image..."
+                  docker build -t ${IMAGE_NAME} .
+                '''
             }
         }
 
-        stage('Load Image into Kubernetes (containerd)') {
+        stage('Load Image to Kubernetes (containerd)') {
             steps {
                 sh '''
-                    echo "Saving Docker image..."
-                    docker save ${IMAGE_NAME} -o image.tar
-
-                    echo "Importing image into containerd..."
-                    sudo ctr -n k8s.io images import image.tar
+                  echo "Importing image into containerd..."
+                  docker save ${IMAGE_NAME} -o image.tar
+                  sudo ctr -n k8s.io images import image.tar
                 '''
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh """
+                sh '''
 cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ${APP_NAME}
-  namespace: ${K8S_NS}
 spec:
   replicas: 1
   selector:
@@ -74,7 +64,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: ${APP_NAME}-svc
-  namespace: ${K8S_NS}
 spec:
   type: NodePort
   selector:
@@ -84,18 +73,17 @@ spec:
     targetPort: 80
     nodePort: ${PORT}
 EOF
-                """
+                '''
             }
         }
     }
 
     post {
         success {
-            echo "✅ Application deployed successfully"
-            echo "🌐 Access URL: http://<NODE-IP>:${PORT}"
+            echo "✅ Application deployed successfully on NodePort ${PORT}"
         }
         failure {
-            echo "❌ Pipeline failed"
+            echo "❌ Kubernetes deployment failed"
         }
     }
 }
