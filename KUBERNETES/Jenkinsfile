@@ -2,34 +2,41 @@ pipeline {
     agent { label 'ss' }
 
     environment {
-        IMAGE_NAME = "pipeline-nginx:${BUILD_NUMBER}"
         APP_NAME   = "pipeline-nginx"
+        IMAGE_NAME = "pipeline-nginx:${BUILD_NUMBER}"
         PORT       = "30080"
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout (SCM)') {
             steps {
-                echo "Source code already checked out by Jenkins (Pipeline from SCM)"
-                sh 'ls -l'
+                echo "Code already checked out by Jenkins (Pipeline from SCM)"
+                sh '''
+                  pwd
+                  ls -l
+                '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-                  echo "Building Docker image..."
-                  docker build -t ${IMAGE_NAME} .
-                '''
+                dir('KUBERNETES') {
+                    sh '''
+                      echo "Building Docker image..."
+                      docker build -t ${IMAGE_NAME} .
+                    '''
+                }
             }
         }
 
-        stage('Load Image to Kubernetes (containerd)') {
+        stage('Load Image into containerd') {
             steps {
                 sh '''
-                  echo "Importing image into containerd..."
+                  echo "Saving Docker image..."
                   docker save ${IMAGE_NAME} -o image.tar
+
+                  echo "Importing image into containerd..."
                   sudo ctr -n k8s.io images import image.tar
                 '''
             }
@@ -37,7 +44,7 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh '''
+                sh """
 cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
@@ -73,17 +80,18 @@ spec:
     targetPort: 80
     nodePort: ${PORT}
 EOF
-                '''
+                """
             }
         }
     }
 
     post {
         success {
-            echo "✅ Application deployed successfully on NodePort ${PORT}"
+            echo "✅ Application deployed successfully"
+            echo "🌐 Access: http://<NODE-IP>:${PORT}"
         }
         failure {
-            echo "❌ Kubernetes deployment failed"
+            echo "❌ Pipeline failed"
         }
     }
 }
